@@ -1,0 +1,67 @@
+# Workflow name
+name: Integration test
+# Trigger the workflow on push or pull request
+#on: [push, pull_request]
+on: [pull_request]
+# A workflow run is made up of one or more jobs. Jobs run in parallel by default.
+jobs:
+  analyze:
+    runs-on: macos-latest
+    #sequence of tasks called
+    steps:
+      - uses: actions/checkout@v1
+      # Setup a flutter environment.
+      # https://github.com/marketplace/actions/flutter-action
+      - uses: subosito/flutter-action@v1
+        with:
+          flutter-version: '1.18.0-7.0.pre'
+          channel: 'dev'
+      - run: flutter pub get
+      # run static analys code
+      - run: flutter analyze
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          #fields: repo,message,commit,author,action,eventName,ref,workflow # selectable (default: repo,message)
+          fields: repo,message,author,action,eventName # selectable (default: repo,message)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # optional
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: success() != true # Pick up events even if the job is not successful
+
+  drive_android:
+    runs-on: macos-latest
+    # Creates a build matrix for the jobs
+    strategy:
+      # Different configurations of the virtual environment.
+      matrix:
+        api-level: [21, 29]
+        target: [default]
+    needs: analyze
+    steps:
+      - uses: actions/checkout@v1
+      - uses: subosito/flutter-action@v1
+        with:
+          flutter-version: '1.18.0-7.0.pre'
+          channel: 'dev'
+      - name: Run Flutter Driver tests
+        # GitHub Action for installing, configuring and running Android Emulators (work only Mac OS)
+        # https://github.com/ReactiveCircus/android-emulator-runner
+        uses: reactivecircus/android-emulator-runner@v1
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: ${{ matrix.target }}
+          arch: x86_64
+          profile: Nexus 6
+          script: flutter drive --target=test_driver/user.dart
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,action,eventName # selectable (default: repo,message)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # optional
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: success() != true # Pick up events even if the job is not successful
+
